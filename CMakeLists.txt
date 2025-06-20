@@ -8,7 +8,7 @@ pico_sdk_init()
 add_executable(sdp_general_query
     sdp_general_query.c)
 add_executable(${PROJECT}
-    ${PROJECT}.c client.c)
+    ${PROJECT}.cc client.cc lock.cc)
 target_link_libraries(sdp_general_query
     pico_stdlib
     pico_btstack_classic
