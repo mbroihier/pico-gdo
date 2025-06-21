@@ -86,15 +86,24 @@ static void spp_service_setup(void){
 
 static btstack_timer_source_t heartbeat;
 static char lineBuffer[30];
+static int messageLength = 0;
 static void  heartbeat_handler(struct btstack_timer_source *ts){
     static int counter = 0;
 
-////////////////////////////////////////////////////////
-// put your own function here to send to android app  //
-////////////////////////////////////////////////////////
     if (rfcomm_channel_id){
-      if (!gpio_get(BUTTON)) snprintf(lineBuffer, sizeof(lineBuffer), "button pressed");
-      else snprintf(lineBuffer, sizeof(lineBuffer), "button released");
+      char * ref = 0;
+      int parms[] = {1807, 45289, 214326};
+      lock lock_object(parms);
+      uint64_t rn = time_us_64();
+      uint8_t seed[] = {(rn >> 24) & 0xff, (rn >> 16) & 0xff, (rn >> 8) & 0xff, rn & 0xff};
+      lock_object.make((char *)seed);
+      messageLength = lock_object.getARealKey(&ref);
+      printf("sending %d bytes:\n", messageLength);
+      for (int i = 0; i < messageLength; i++) {
+	lineBuffer[i] = *ref++;
+	printf("%2.2x ", lineBuffer[i]);
+      }
+      printf("\n");
       rfcomm_request_can_send_now_event(rfcomm_channel_id);
     }
 
@@ -177,6 +186,7 @@ static void rfcomm_packet_handler (uint8_t packet_type, uint16_t channel, uint8_
     case RFCOMM_EVENT_CHANNEL_OPENED:
       if (rfcomm_event_channel_opened_get_status(packet)) {
 	printf("RFCOMM channel open failed, status %u\n", rfcomm_event_channel_opened_get_status(packet));
+	rfcomm_channel_id = 0;
       } else {
 	rfcomm_channel_id = rfcomm_event_channel_opened_get_rfcomm_cid(packet);
 	mtu = rfcomm_event_channel_opened_get_max_frame_size(packet);
@@ -185,7 +195,7 @@ static void rfcomm_packet_handler (uint8_t packet_type, uint16_t channel, uint8_
       break;
     case RFCOMM_EVENT_CAN_SEND_NOW:
       printf("RFCOMM can send data data\n");
-      rfcomm_send(rfcomm_channel_id, (uint8_t*) lineBuffer, (uint16_t) strlen(lineBuffer));
+      rfcomm_send(rfcomm_channel_id, (uint8_t*) lineBuffer, (uint16_t) messageLength);
       break;
                 
     case RFCOMM_EVENT_CHANNEL_CLOSED:
@@ -237,8 +247,6 @@ int btstack_main(int argc, const char * argv[]){
     gap_set_local_name("rfcomm 00:00:00:00:00:00");
     hci_power_control(HCI_POWER_ON);
     sleep_ms(10000);
-    int parms[] = {1, 2, 3};
-    lock lock_object( parms, "");
     bd_addr_t rfcomm_addr;
     sscanf_bd_addr("00:21:E9:D6:77:BA", rfcomm_addr);
 
