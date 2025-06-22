@@ -53,9 +53,6 @@
 #include "btstack.h"
 #include "lock.h"
 
-#define BUTTON 15
-#define BLUE_LED 16
-
 #define RFCOMM_SERVER_CHANNEL 1
 #define HEARTBEAT_PERIOD_MS 50
 
@@ -64,8 +61,10 @@ static void rfcomm_packet_handler (uint8_t packet_type, uint16_t channel, uint8_
 
 static int toggle = true;
 
+static bd_addr_t rfcomm_addr;
 static uint16_t rfcomm_channel_id;
 static uint8_t  spp_service_buffer[150];
+static uint8_t btstack_state = 0; // stack down
 static btstack_packet_callback_registration_t hci_event_callback_registration;
 
 static void spp_service_setup(void){
@@ -122,11 +121,9 @@ static void one_shot_timer_setup(void){
 static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
   UNUSED(channel);
   bd_addr_t event_addr;
-  bd_addr_t rfcomm_addr; 
   uint8_t   rfcomm_channel_nr;
   uint16_t  mtu;
   int i;
-  sscanf_bd_addr("00:21:E9:D6:77:BA", rfcomm_addr);
 
   switch (packet_type) {
   case HCI_EVENT_PACKET:
@@ -136,6 +133,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
       printf("Got a BTstack event state change: %x\n", state);
       if (state == HCI_STATE_WORKING) {
 	printf("BTstack is up and running\n");
+	btstack_state = 1;  // stack is up
       }
       break;
     }
@@ -165,11 +163,9 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 static void rfcomm_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
   UNUSED(channel);
   bd_addr_t event_addr;
-  bd_addr_t rfcomm_addr; 
   uint8_t   rfcomm_channel_nr;
   uint16_t  mtu;
   int i;
-  sscanf_bd_addr("00:21:E9:D6:77:BA", rfcomm_addr);
   printf("RFCOMM PACKET HANDLER\n");
 
   switch (packet_type) {
@@ -235,20 +231,19 @@ int btstack_main(int argc, const char * argv[]){
     (void)argv;
 
     one_shot_timer_setup();
-    //sleep_ms(15000);
-    //sleep_ms(2500);
     sleep_ms(1000);
     spp_service_setup();
     //hci_dump_init(hci_dump_embedded_stdout_get_instance());
 
     gap_discoverable_control(1);
     gap_ssp_set_io_capability(SSP_IO_CAPABILITY_DISPLAY_YES_NO);
-    //gap_set_local_name("SPP Counter 00:00:00:00:00:00");
     gap_set_local_name("rfcomm 00:00:00:00:00:00");
     hci_power_control(HCI_POWER_ON);
-    sleep_ms(10000);
-    bd_addr_t rfcomm_addr;
-    sscanf_bd_addr("00:21:E9:D6:77:BA", rfcomm_addr);
+    while (btstack_state == 0){
+      sleep_ms(100);
+    }
+    //sscanf_bd_addr("00:21:E9:D6:77:BA", rfcomm_addr); // iMac
+    sscanf_bd_addr("B8:27:EB:69:B1:42", rfcomm_addr); // rpi3
 
     printf("setting up rfcomm\n");
     rfcomm_init();
