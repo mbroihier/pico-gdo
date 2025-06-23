@@ -40,7 +40,7 @@
  * 
  */
 
-#define BTSTACK_FILE__ "spp_counter.c"
+#define BTSTACK_FILE__ "client.cc"
 
 #include <inttypes.h>
 #include <stdint.h>
@@ -65,6 +65,8 @@ static bd_addr_t rfcomm_addr;
 static uint16_t rfcomm_channel_id;
 static uint8_t  spp_service_buffer[150];
 static uint8_t btstack_state = 0; // stack down
+static uint16_t messagesSent = 0;
+static bool retry = false;
 static btstack_packet_callback_registration_t hci_event_callback_registration;
 
 static void spp_service_setup(void){
@@ -121,7 +123,6 @@ static void one_shot_timer_setup(void){
 static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
   UNUSED(channel);
   bd_addr_t event_addr;
-  uint8_t   rfcomm_channel_nr;
   uint16_t  mtu;
   int i;
 
@@ -192,6 +193,7 @@ static void rfcomm_packet_handler (uint8_t packet_type, uint16_t channel, uint8_
     case RFCOMM_EVENT_CAN_SEND_NOW:
       printf("RFCOMM can send data data\n");
       rfcomm_send(rfcomm_channel_id, (uint8_t*) lineBuffer, (uint16_t) messageLength);
+      messagesSent++;
       break;
                 
     case RFCOMM_EVENT_CHANNEL_CLOSED:
@@ -217,6 +219,13 @@ static void rfcomm_packet_handler (uint8_t packet_type, uint16_t channel, uint8_
   case RFCOMM_DATA_PACKET:
     printf("RFCOM_DATA_PACKET - type was: %2.2x, size was: %d\n", hci_event_packet_get_type(packet), size);
     printf("%s\n", packet);
+    if (strncmp((char *) packet, "Command Successful", size - 1) == 0) {
+      printf("Can terminate\n");
+      retry = false;
+    } else {
+      printf("Need to retry\n");
+      retry = true;
+    }
     break;
 
   default:
@@ -251,7 +260,24 @@ int btstack_main(int argc, const char * argv[]){
     rfcomm_create_channel(rfcomm_packet_handler, rfcomm_addr, 1, &rfcomm_channel_id);
     rfcomm_request_can_send_now_event(rfcomm_channel_id);
     printf("rfcomm_channel_id %4x\n", rfcomm_channel_id);
-
+    uint16_t oldMessagesSent = messagesSent;
+    while (oldMessagesSent == messagesSent) {
+      sleep_ms(1000);
+    }
+    while (retry) {
+      if (retry) {
+	oldMessagesSent = messagesSent;
+	printf("setting up rfcomm\n");
+	rfcomm_init();
+	rfcomm_register_service(packet_handler, RFCOMM_SERVER_CHANNEL, 0xffff);
+	rfcomm_create_channel(rfcomm_packet_handler, rfcomm_addr, 1, &rfcomm_channel_id);
+	rfcomm_request_can_send_now_event(rfcomm_channel_id);
+	printf("rfcomm_channel_id %4x\n", rfcomm_channel_id);
+      }
+      while (oldMessagesSent == messagesSent) {
+	sleep_ms(1000);
+      }
+    }
     return 0;
 }
 
