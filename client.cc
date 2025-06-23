@@ -237,13 +237,13 @@ int btstack_main(int argc, const char * argv[]){
 
     gap_discoverable_control(1);
     gap_ssp_set_io_capability(SSP_IO_CAPABILITY_DISPLAY_YES_NO);
-    gap_set_local_name("rfcomm 00:00:00:00:00:00");
+    gap_set_local_name("pico-gdo");
     hci_power_control(HCI_POWER_ON);
     while (btstack_state == 0){
       sleep_ms(100);
     }
-    //sscanf_bd_addr("00:21:E9:D6:77:BA", rfcomm_addr); // iMac
-    sscanf_bd_addr("B8:27:EB:69:B1:42", rfcomm_addr); // rpi3
+    sscanf_bd_addr("00:21:E9:D6:77:BA", rfcomm_addr); // iMac
+    //sscanf_bd_addr("B8:27:EB:69:B1:42", rfcomm_addr); // rpi3
 
     printf("setting up rfcomm\n");
     rfcomm_init();
