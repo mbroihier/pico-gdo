@@ -18,4 +18,6 @@ target_include_directories(${PROJECT} PRIVATE
 pico_add_extra_outputs(${PROJECT})
 pico_enable_stdio_usb(${PROJECT} 1)
 pico_enable_stdio_uart(${PROJECT} 0)
+#pico_enable_stdio_usb(${PROJECT} 0)
+#pico_enable_stdio_uart(${PROJECT} 1)
 

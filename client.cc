@@ -183,6 +183,7 @@ static void rfcomm_packet_handler (uint8_t packet_type, uint16_t channel, uint8_
     case RFCOMM_EVENT_CHANNEL_OPENED:
       if (rfcomm_event_channel_opened_get_status(packet)) {
 	printf("RFCOMM channel open failed, status %u\n", rfcomm_event_channel_opened_get_status(packet));
+	retry = true;
 	rfcomm_channel_id = 0;
       } else {
 	rfcomm_channel_id = rfcomm_event_channel_opened_get_rfcomm_cid(packet);
@@ -277,6 +278,10 @@ int btstack_main(int argc, const char * argv[]){
       while (oldMessagesSent == messagesSent) {
 	sleep_ms(1000);
       }
+    }
+    printf("command successfully issued\n");
+    while (true) {
+      sleep_ms(1000);
     }
     return 0;
 }
