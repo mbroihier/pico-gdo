@@ -48,7 +48,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "pico/cyw43_arch.h"
 #include "pico/stdlib.h"
+#include "hardware/watchdog.h"
 
 #include "btstack.h"
 #include "lock.h"
@@ -60,6 +62,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 static void rfcomm_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 
 static int toggle = true;
+static int const LED = CYW43_WL_GPIO_LED_PIN;
 
 static bd_addr_t rfcomm_addr;
 static uint16_t rfcomm_channel_id;
@@ -181,10 +184,16 @@ static void rfcomm_packet_handler (uint8_t packet_type, uint16_t channel, uint8_
       break;
                
     case RFCOMM_EVENT_CHANNEL_OPENED:
+      cyw43_arch_gpio_put(LED, 0);
+      if (watchdog_enable_caused_reboot()) {
+        watchdog_disable();
+        cyw43_arch_gpio_put(LED, 1);
+      }
       if (rfcomm_event_channel_opened_get_status(packet)) {
 	printf("RFCOMM channel open failed, status %u\n", rfcomm_event_channel_opened_get_status(packet));
 	retry = true;
 	rfcomm_channel_id = 0;
+        watchdog_enable(2000, 1);
       } else {
 	rfcomm_channel_id = rfcomm_event_channel_opened_get_rfcomm_cid(packet);
 	mtu = rfcomm_event_channel_opened_get_max_frame_size(packet);
@@ -275,10 +284,12 @@ int btstack_main(int argc, const char * argv[]){
 	rfcomm_request_can_send_now_event(rfcomm_channel_id);
 	printf("rfcomm_channel_id %4x\n", rfcomm_channel_id);
       }
+      cyw43_arch_gpio_put(LED, 0);
       while (oldMessagesSent == messagesSent) {
 	sleep_ms(1000);
       }
     }
+    cyw43_arch_gpio_put(LED, 0);
     printf("command successfully issued\n");
     while (true) {
       sleep_ms(1000);
