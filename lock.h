@@ -20,13 +20,16 @@ class lock {
   int slope;
   int offset;
   int modulo;
+  bool locked;
   char aRealKey[MAX_BYTES];
   int aRealKeyLength;
 
  public:
   void make(char * bytes);
+  bool check_another_key(char * bytes);
   int getARealKey(char ** bytes);
   lock(int * lockParameters);
+  bool isLocked() { return locked; };
   ~lock();
 };
 

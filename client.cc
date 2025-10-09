@@ -102,7 +102,7 @@ static void  heartbeat_handler(struct btstack_timer_source *ts){
       uint8_t seed[] = {(rn >> 24) & 0xff, (rn >> 16) & 0xff, (rn >> 8) & 0xff, rn & 0xff};
       lock_object.make((char *)seed);
       messageLength = lock_object.getARealKey(&ref);
-      printf("sending %d bytes:\n", messageLength);
+      printf("building key of  %d bytes:\n", messageLength);
       for (int i = 0; i < messageLength; i++) {
 	lineBuffer[i] = *ref++;
 	printf("%2.2x ", lineBuffer[i]);
@@ -185,15 +185,9 @@ static void rfcomm_packet_handler (uint8_t packet_type, uint16_t channel, uint8_
                
     case RFCOMM_EVENT_CHANNEL_OPENED:
       cyw43_arch_gpio_put(LED, 0);
-      if (watchdog_enable_caused_reboot()) {
-        watchdog_disable();
-        cyw43_arch_gpio_put(LED, 1);
-      }
       if (rfcomm_event_channel_opened_get_status(packet)) {
 	printf("RFCOMM channel open failed, status %u\n", rfcomm_event_channel_opened_get_status(packet));
-	retry = true;
 	rfcomm_channel_id = 0;
-        watchdog_enable(2000, 1);
       } else {
 	rfcomm_channel_id = rfcomm_event_channel_opened_get_rfcomm_cid(packet);
 	mtu = rfcomm_event_channel_opened_get_max_frame_size(packet);
@@ -202,8 +196,12 @@ static void rfcomm_packet_handler (uint8_t packet_type, uint16_t channel, uint8_
       break;
     case RFCOMM_EVENT_CAN_SEND_NOW:
       printf("RFCOMM can send data data\n");
-      rfcomm_send(rfcomm_channel_id, (uint8_t*) lineBuffer, (uint16_t) messageLength);
-      messagesSent++;
+      if (messagesSent == 0) {
+        rfcomm_send(rfcomm_channel_id, (uint8_t*) lineBuffer, (uint16_t) messageLength);
+        messagesSent++;
+      } else {
+        printf("rfcomm_send being supressed\n");
+      }
       break;
                 
     case RFCOMM_EVENT_CHANNEL_CLOSED:
@@ -231,6 +229,7 @@ static void rfcomm_packet_handler (uint8_t packet_type, uint16_t channel, uint8_
     printf("%s\n", packet);
     if (strncmp((char *) packet, "Command Successful", size - 1) == 0) {
       printf("Can terminate\n");
+      rfcomm_channel_id = 0;
       retry = false;
     } else {
       printf("Need to retry\n");
@@ -249,6 +248,10 @@ int btstack_main(int argc, const char * argv[]){
     (void)argc;
     (void)argv;
 
+    if (watchdog_enable_caused_reboot()) {
+      watchdog_disable();
+      cyw43_arch_gpio_put(LED, 1);
+    }
     one_shot_timer_setup();
     sleep_ms(1000);
     spp_service_setup();
@@ -261,38 +264,38 @@ int btstack_main(int argc, const char * argv[]){
     while (btstack_state == 0){
       sleep_ms(100);
     }
-    sscanf_bd_addr("00:21:E9:D6:77:BA", rfcomm_addr); // iMac
+    sscanf_bd_addr("28:CD:C1:13:15:30", rfcomm_addr); // pico
+    //sscanf_bd_addr("00:21:E9:D6:77:BA", rfcomm_addr); // iMac
     //sscanf_bd_addr("B8:27:EB:69:B1:42", rfcomm_addr); // rpi3
 
     printf("setting up rfcomm\n");
+    retry = false;
     rfcomm_init();
     rfcomm_register_service(packet_handler, RFCOMM_SERVER_CHANNEL, 0xffff);  // reserved channel, mtu limited by l2cap
     rfcomm_create_channel(rfcomm_packet_handler, rfcomm_addr, 1, &rfcomm_channel_id);
     rfcomm_request_can_send_now_event(rfcomm_channel_id);
     printf("rfcomm_channel_id %4x\n", rfcomm_channel_id);
     uint16_t oldMessagesSent = messagesSent;
+    int loop_count = 0;
     while (oldMessagesSent == messagesSent) {
       sleep_ms(1000);
-    }
-    while (retry) {
-      if (retry) {
-	oldMessagesSent = messagesSent;
-	printf("setting up rfcomm\n");
-	rfcomm_init();
-	rfcomm_register_service(packet_handler, RFCOMM_SERVER_CHANNEL, 0xffff);
-	rfcomm_create_channel(rfcomm_packet_handler, rfcomm_addr, 1, &rfcomm_channel_id);
-	rfcomm_request_can_send_now_event(rfcomm_channel_id);
-	printf("rfcomm_channel_id %4x\n", rfcomm_channel_id);
-      }
-      cyw43_arch_gpio_put(LED, 0);
-      while (oldMessagesSent == messagesSent) {
-	sleep_ms(1000);
+      if (++loop_count == 10 || retry) {
+        printf("resetting processor to try again, count = %d, retry = %s\n", loop_count, retry? "true" : "false");
+        cyw43_arch_deinit();  // shut down wireless stuff
+        watchdog_enable(20, 1);  // reboot processor
+        while(true);
       }
     }
-    cyw43_arch_gpio_put(LED, 0);
     printf("command successfully issued\n");
+    loop_count = 0;
+    int state = 1;
     while (true) {
-      sleep_ms(1000);
+      cyw43_arch_gpio_put(LED, state);
+      state ^= 0x01;
+      sleep_ms(500);
+      if (++loop_count == 10) {
+        cyw43_arch_deinit();
+      }
     }
     return 0;
 }
