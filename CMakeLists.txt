@@ -18,6 +18,22 @@ target_include_directories(${PROJECT} PRIVATE
 pico_add_extra_outputs(${PROJECT})
 pico_enable_stdio_usb(${PROJECT} 1)
 pico_enable_stdio_uart(${PROJECT} 0)
-#pico_enable_stdio_usb(${PROJECT} 0)
-#pico_enable_stdio_uart(${PROJECT} 1)
-
+set(PROJECT2 "gdo_server")
+add_executable (${PROJECT2}
+    ${PROJECT2}.cc
+    server.cc
+    lock.cc
+    )
+target_link_libraries(${PROJECT2}
+    pico_stdlib
+    pico_btstack_ble
+    pico_btstack_classic
+    pico_btstack_cyw43
+    pico_cyw43_arch_none
+    )
+target_include_directories(${PROJECT2} PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}
+    )
+pico_add_extra_outputs(${PROJECT2})
+pico_enable_stdio_usb(${PROJECT2} 0)
+pico_enable_stdio_uart(${PROJECT2} 1)
