@@ -252,6 +252,7 @@ int btstack_main(int argc, const char * argv[]){
       watchdog_disable();
       cyw43_arch_gpio_put(LED, 1);
     }
+    watchdog_enable(10000, 1);  // make sure we get through initialization
     one_shot_timer_setup();
     sleep_ms(1000);
     spp_service_setup();
@@ -289,11 +290,14 @@ int btstack_main(int argc, const char * argv[]){
     printf("command successfully issued\n");
     loop_count = 0;
     int state = 1;
+    bool test_mode = true;
+    watchdog_disable();  // terminate watchdog, we made it
     while (true) {
       cyw43_arch_gpio_put(LED, state);
       state ^= 0x01;
       sleep_ms(500);
       if (++loop_count == 10) {
+        if (test_mode) watchdog_enable(20, 1);  // reboot processor
         cyw43_arch_deinit();
       }
     }

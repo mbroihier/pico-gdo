@@ -42,19 +42,18 @@
  * 
  */
 // *****************************************************************************
-
+#include <map>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
- 
+#include "hardware/gpio.h"
 #include "btstack.h"
-//#include "att_server.h"
-//#include "sm.h"
 #include "lock.h"
-//#include "spp_and_gatt_counter.h"
 
+
+#define PIN 15
 #define RFCOMM_SERVER_CHANNEL 1
 #define HEARTBEAT_PERIOD_MS 10
 
@@ -73,6 +72,9 @@ static btstack_packet_callback_registration_t hci_event_callback_registration;
 
 static uint8_t gatt_service_buffer[70];
 
+static std::map<int, int>  keys;
+static std::map<int, int>  keys_index;
+static int age = 0;
 /*
  * @section Advertisements 
  *
@@ -142,8 +144,11 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
       rfcomm_channel_nr = rfcomm_event_incoming_connection_get_server_channel(packet);
       rfcomm_channel_id = rfcomm_event_incoming_connection_get_rfcomm_cid(packet);
       printf("RFCOMM channel %u requested for %s\n", rfcomm_channel_nr, bd_addr_to_str(event_addr));
-      rfcomm_accept_connection(rfcomm_channel_id);
-      connection_count++;
+      if (strncmp(bd_addr_to_str(event_addr), "28:CD:C1:13:15:2E", sizeof("28:CD:C1:13:15:2E")) == 0) {
+        // only accept connections from the expected client
+        rfcomm_accept_connection(rfcomm_channel_id);
+        connection_count++;
+      }
       break;
 					
     case RFCOMM_EVENT_CHANNEL_OPENED:
@@ -177,6 +182,8 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
     case RFCOMM_EVENT_CHANNEL_CLOSED:
       printf("RFCOMM channel closed\n");
       rfcomm_channel_id = 0;
+      printf("releasing button\n");
+      gpio_put(PIN, 0);
       break;
                 
     default:
@@ -190,12 +197,32 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
       printf("Received a INVALID key\n");
       is_still_locked = true;
     } else {
-      printf("Received a valid key !!!\n");
+      printf("Received a numerically valid key\n");
       for (int i = 0; i < size ; i++) {
         printf("%2.2x ", packet[i]);
       }
       printf("\n");
-      is_still_locked = false;
+      int seed = ((packet[0] << 24) + ((packet[1] << 16) & 0xff0000) +
+                  ((packet[2] << 8) & 0xff00) + (packet[3] & 0xff));
+      std::map<int, int>::iterator location = keys.find(seed);
+      if (location == keys.end()) {
+        keys[seed] = 1;
+        if (age > 1000) age = 0;
+        if (keys.size() >= 1000) {
+          keys.erase(keys_index[age]);
+        }
+        keys_index[age++] = seed;
+        if (keys.size() == 1) {
+          is_still_locked = true;
+        } else {
+          printf("pushing button\n");
+          gpio_put(PIN, 1);
+          is_still_locked = false;
+        }
+      } else {
+        printf("duplicate key, don't unlock\n");
+        is_still_locked = true;
+      }
     }
     ready_to_reply = true;
     rfcomm_request_can_send_now_event(rfcomm_channel_id);
@@ -232,7 +259,8 @@ int btstack_main(void)
 {
   uint8_t * profile_data;
   l2cap_init();
-
+  gpio_init(PIN);
+  gpio_set_dir(PIN, GPIO_OUT);
   rfcomm_init();
   rfcomm_register_service(packet_handler, RFCOMM_SERVER_CHANNEL, 0xffff);
 
